@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IMDb Sentiment Classifier</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:    #2E75B6;
+      --blue-dk: #1f5288;
+      --green:   #4caf50;
+      --red:     #e53935;
+      --grey:    #f4f6f9;
+      --border:  #dde3ed;
+      --text:    #1a1a2e;
+      --muted:   #6b7280;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--grey);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--blue);
+      color: #fff;
+      padding: 1.5rem 2rem;
+      text-align: center;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 700; }
+    header p  { margin-top: .4rem; opacity: .85; font-size: .95rem; }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 780px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.8rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--blue);
+    }
+
+    /* ── Textarea ── */
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      padding: .75rem 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 7px;
+      font-size: .95rem;
+      resize: vertical;
+      transition: border-color .2s;
+      font-family: inherit;
+      color: var(--text);
+    }
+    textarea:focus { outline: none; border-color: var(--blue); }
+
+    /* ── Char counter ── */
+    .char-counter {
+      text-align: right;
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: .35rem;
+    }
+    .char-counter.over { color: var(--red); }
+
+    /* ── Example chips ── */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-top: 1rem;
+    }
+    .chip {
+      display: inline-block;
+      padding: .35rem .8rem;
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      font-size: .8rem;
+      cursor: pointer;
+      background: var(--grey);
+      transition: background .15s, border-color .15s;
+    }
+    .chip:hover { background: #e2eaf5; border-color: var(--blue); }
+    .chip.positive { border-color: var(--green); color: #2e7d32; }
+    .chip.negative { border-color: var(--red);   color: var(--red); }
+    .chip.ambiguous { border-color: #f59e0b;     color: #b45309; }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: .75rem;
+      margin-top: 1.1rem;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: .65rem 1.4rem;
+      border: none;
+      border-radius: 7px;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+    }
+    button:active { transform: scale(.97); }
+    .btn-primary   { background: var(--blue);    color: #fff; }
+    .btn-primary:hover   { background: var(--blue-dk); }
+    .btn-secondary { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
+    .btn-secondary:hover { background: #e6eef8; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: none;
+      width: 22px; height: 22px;
+      border: 3px solid #ccc;
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      margin: 1.2rem auto 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Result card ── */
+    #result { display: none; }
+
+    .sentiment-badge {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-align: center;
+      padding: .5rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .sentiment-badge.positive { color: var(--green); background: #f0faf0; }
+    .sentiment-badge.negative { color: var(--red);   background: #fff0f0; }
+
+    /* ── Confidence bar ── */
+    .conf-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .85rem;
+      margin-bottom: .35rem;
+      color: var(--muted);
+    }
+    .bar-track {
+      height: 10px;
+      background: var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      background: var(--blue);
+      transition: width .5s ease;
+    }
+    .model-tag {
+      margin-top: .9rem;
+      font-size: .82rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* ── Compare results ── */
+    #compare-result { display: none; }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 520px) { .compare-grid { grid-template-columns: 1fr; } }
+    .compare-col {
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .compare-col h3 { font-size: .85rem; color: var(--muted); margin-bottom: .6rem; }
+
+    /* ── Error ── */
+    .error-msg {
+      color: var(--red);
+      font-size: .9rem;
+      margin-top: .8rem;
+      display: none;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>IMDb Sentiment Classifier</h1>
+  <p>TF-IDF + Logistic Regression vs Keras LSTM &nbsp;·&nbsp; 50,000 IMDb reviews</p>
+</header>
+
+<div class="container">
+
+  <!-- Input card -->
+  <div class="card">
+    <h2>Enter a Movie Review</h2>
+
+    <textarea id="review-text" placeholder="Paste or type a movie review here…" maxlength="5000"></textarea>
+    <div class="char-counter"><span id="char-count">0</span> / 5000</div>
+
+    <p style="font-size:.83rem;color:var(--muted);margin-top:.9rem">Try an example:</p>
+    <div class="chips">
+      <span class="chip positive" data-review="An absolute masterpiece. The performances were breathtaking, the direction was visionary, and the story left me in tears. One of the finest films I have ever seen. A triumph in every sense.">✅ Clearly positive</span>
+      <span class="chip negative" data-review="A complete waste of two hours. The plot was incoherent, the acting was wooden, and the dialogue was cringe-worthy. I nearly walked out. Avoid at all costs.">❌ Clearly negative</span>
+      <span class="chip ambiguous" data-review="The film had some genuinely striking visuals and the lead performance was compelling, but the pacing dragged in the second act and the ending felt rushed. Worth watching once, but not a repeat view.">⚖️ Ambiguous</span>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-primary"   id="btn-analyse">Analyse</button>
+      <button class="btn-secondary" id="btn-compare">Compare Both Models</button>
+    </div>
+
+    <div class="spinner" id="spinner"></div>
+    <p class="error-msg" id="error-msg"></p>
+  </div>
+
+  <!-- Single-model result -->
+  <div class="card" id="result">
+    <h2>Result</h2>
+    <div class="sentiment-badge" id="sentiment-label"></div>
+    <div class="conf-label">
+      <span>Confidence</span>
+      <span id="conf-pct"></span>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="conf-bar" style="width:0%"></div></div>
+    <p class="model-tag" id="model-tag"></p>
+  </div>
+
+  <!-- Compare result -->
+  <div class="card" id="compare-result">
+    <h2>Model Comparison</h2>
+    <div class="compare-grid">
+      <div class="compare-col" id="lr-col">
+        <h3>TF-IDF + Logistic Regression</h3>
+        <div class="sentiment-badge" id="lr-sentiment"></div>
+        <div class="conf-label"><span>Confidence</span><span id="lr-conf-pct"></span></div>
+        <div class="bar-track"><div class="bar-fill" id="lr-conf-bar" style="width:0%"></div></div>
+      </div>
+      <div class="compare-col" id="lstm-col">
+        <h3>Keras LSTM</h3>
+        <div class="sentiment-badge" id="lstm-sentiment"></div>
+        <div class="conf-label"><span>Confidence</span><span id="lstm-conf-pct"></span></div>
+        <div class="bar-track"><div class="bar-fill" id="lstm-conf-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  IMDb Sentiment Classifier &nbsp;·&nbsp; Active model: <strong>{{ best_model }}</strong>
+</footer>
+
+<script>
+  const textarea   = document.getElementById('review-text');
+  const charCount  = document.getElementById('char-count');
+  const charCtr    = document.querySelector('.char-counter');
+  const spinner    = document.getElementById('spinner');
+  const errorMsg   = document.getElementById('error-msg');
+  const resultCard = document.getElementById('result');
+  const cmpCard    = document.getElementById('compare-result');
+
+  // ── Char counter ──────────────────────────────────────────────────────────
+  textarea.addEventListener('input', () => {
+    const n = textarea.value.length;
+    charCount.textContent = n;
+    charCtr.classList.toggle('over', n >= 5000);
+  });
+
+  // ── Example chips ─────────────────────────────────────────────────────────
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      textarea.value = chip.dataset.review;
+      charCount.textContent = chip.dataset.review.length;
+      charCtr.classList.remove('over');
+    });
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function showSpinner() {
+    spinner.style.display = 'block';
+    errorMsg.style.display = 'none';
+    resultCard.style.display = 'none';
+    cmpCard.style.display = 'none';
+  }
+  function hideSpinner() { spinner.style.display = 'none'; }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.style.display = 'block';
+  }
+
+  function renderSingle(data) {
+    const pct   = Math.round(data.confidence * 100);
+    const label = data.sentiment.toUpperCase();
+
+    const badge = document.getElementById('sentiment-label');
+    badge.textContent = label;
+    badge.className   = `sentiment-badge ${data.sentiment}`;
+
+    document.getElementById('conf-pct').textContent = pct + '%';
+    document.getElementById('conf-bar').style.width = pct + '%';
+    document.getElementById('model-tag').textContent = 'Model used: ' + data.model_used;
+
+    resultCard.style.display = 'block';
+  }
+
+  function renderCompareCol(prefix, res) {
+    if (res.error) {
+      document.getElementById(prefix + '-sentiment').textContent = 'N/A';
+      document.getElementById(prefix + '-conf-pct').textContent  = '';
+      return;
+    }
+    const pct   = Math.round(res.confidence * 100);
+    const badge = document.getElementById(prefix + '-sentiment');
+    badge.textContent = res.sentiment.toUpperCase();
+    badge.className   = `sentiment-badge ${res.sentiment}`;
+    document.getElementById(prefix + '-conf-pct').textContent   = pct + '%';
+    document.getElementById(prefix + '-conf-bar').style.width   = pct + '%';
+  }
+
+  function getText() {
+    const t = textarea.value.trim();
+    if (!t) { showError('Please enter a movie review first.'); return null; }
+    if (t.length > 5000) { showError('Review must be 5,000 characters or fewer.'); return null; }
+    return t;
+  }
+
+  // ── Analyse button ────────────────────────────────────────────────────────
+  document.getElementById('btn-analyse').addEventListener('click', async () => {
+    const text = getText();
+    if (!text) return;
+    showSpinner();
+    try {
+      const res  = await fetch('/analyze', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text })
+      });
+      const data = await res.json();
+      hideSpinner();
+      if (!res.ok) { showError(data.error || 'Server error'); return; }
+      renderSingle(data);
+    } catch (e) {
+      hideSpinner();
+      showError('Network error — is the server running?');
+    }
+  });
+
+  // ── Compare button ────────────────────────────────────────────────────────
+  document.getElementById('btn-compare').addEventListener('click', async () => {
+    const text = getText();
+    if (!text) return;
+    showSpinner();
+    try {
+      const res  = await fetch('/compare', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text })
+      });
+      const data = await res.json();
+      hideSpinner();
+      if (!res.ok) { showError(data.error || 'Server error'); return; }
+      renderCompareCol('lr',   data.results.logistic_regression);
+      renderCompareCol('lstm', data.results.lstm);
+      cmpCard.style.display = 'block';
+    } catch (e) {
+      hideSpinner();
+      showError('Network error — is the server running?');
+    }
+  });
+</script>
+</body>
+</html>
