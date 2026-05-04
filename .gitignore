@@ -8,3 +8,4 @@ venv/
 ~/tensorflow_datasets/
 .zappa_settings_local.json
 .vscode/
+imdb-sentiment-classifier-production-template-*.json
