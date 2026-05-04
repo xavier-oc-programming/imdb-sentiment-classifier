@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IMDb Sentiment Classifier</title>
+  <title>IMDb Sentiment Analysis</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -16,6 +16,7 @@
       --border:  #dde3ed;
       --text:    #1a1a2e;
       --muted:   #6b7280;
+      --orange:  #ED7D31;
     }
 
     body {
@@ -37,7 +38,7 @@
 
     /* ── Layout ── */
     .container {
-      max-width: 780px;
+      max-width: 900px;
       margin: 2rem auto;
       padding: 0 1rem;
     }
@@ -100,9 +101,9 @@
       transition: background .15s, border-color .15s;
     }
     .chip:hover { background: #e2eaf5; border-color: var(--blue); }
-    .chip.positive { border-color: var(--green); color: #2e7d32; }
-    .chip.negative { border-color: var(--red);   color: var(--red); }
-    .chip.ambiguous { border-color: #f59e0b;     color: #b45309; }
+    .chip.positive  { border-color: var(--green);  color: #2e7d32; }
+    .chip.negative  { border-color: var(--red);    color: var(--red); }
+    .chip.ambiguous { border-color: #f59e0b;       color: #b45309; }
 
     /* ── Buttons ── */
     .btn-row {
@@ -125,6 +126,8 @@
     .btn-primary:hover   { background: var(--blue-dk); }
     .btn-secondary { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
     .btn-secondary:hover { background: #e6eef8; }
+    .btn-bedrock   { background: var(--orange); color: #fff; }
+    .btn-bedrock:hover   { background: #c4621f; }
 
     /* ── Spinner ── */
     .spinner {
@@ -152,6 +155,7 @@
     }
     .sentiment-badge.positive { color: var(--green); background: #f0faf0; }
     .sentiment-badge.negative { color: var(--red);   background: #fff0f0; }
+    .sentiment-badge.na       { color: var(--muted); background: var(--grey); font-size: 1rem; padding: .9rem; }
 
     /* ── Confidence bar ── */
     .conf-label {
@@ -184,17 +188,26 @@
     #compare-result { display: none; }
     .compare-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 1rem;
     }
-    @media (max-width: 520px) { .compare-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 680px) { .compare-grid { grid-template-columns: 1fr; } }
     .compare-col {
       border: 1.5px solid var(--border);
       border-radius: 8px;
       padding: 1rem;
       text-align: center;
     }
+    .compare-col.bedrock-col { border-color: var(--orange); }
     .compare-col h3 { font-size: .85rem; color: var(--muted); margin-bottom: .6rem; }
+    .compare-col.bedrock-col h3 { color: var(--orange); }
+
+    .bedrock-note {
+      font-size: .78rem;
+      color: var(--muted);
+      margin-top: .6rem;
+      font-style: italic;
+    }
 
     /* ── Error ── */
     .error-msg {
@@ -216,8 +229,8 @@
 <body>
 
 <header>
-  <h1>IMDb Sentiment Classifier</h1>
-  <p>TF-IDF + Logistic Regression vs Keras LSTM &nbsp;·&nbsp; 50,000 IMDb reviews</p>
+  <h1>IMDb Sentiment Analysis</h1>
+  <p>TF-IDF + Logistic Regression &nbsp;·&nbsp; Keras LSTM &nbsp;·&nbsp; Claude Haiku via Amazon Bedrock &nbsp;·&nbsp; 50,000 IMDb reviews</p>
 </header>
 
 <div class="container">
@@ -238,7 +251,7 @@
 
     <div class="btn-row">
       <button class="btn-primary"   id="btn-analyse">Analyse</button>
-      <button class="btn-secondary" id="btn-compare">Compare Both Models</button>
+      <button class="btn-secondary" id="btn-compare">Compare All Three Models</button>
     </div>
 
     <div class="spinner" id="spinner"></div>
@@ -273,13 +286,20 @@
         <div class="conf-label"><span>Confidence</span><span id="lstm-conf-pct"></span></div>
         <div class="bar-track"><div class="bar-fill" id="lstm-conf-bar" style="width:0%"></div></div>
       </div>
+      <div class="compare-col bedrock-col" id="bedrock-col">
+        <h3>Claude Haiku · Amazon Bedrock</h3>
+        <div class="sentiment-badge" id="bedrock-sentiment"></div>
+        <div class="conf-label"><span>Confidence</span><span id="bedrock-conf-pct"></span></div>
+        <div class="bar-track"><div class="bar-fill" id="bedrock-conf-bar" style="width:0%"></div></div>
+        <p class="bedrock-note" id="bedrock-note"></p>
+      </div>
     </div>
   </div>
 
 </div>
 
 <footer>
-  IMDb Sentiment Classifier &nbsp;·&nbsp; Active model: <strong>{{ best_model }}</strong>
+  IMDb Sentiment Analysis &nbsp;·&nbsp; Active model: <strong>{{ best_model }}</strong>
 </footer>
 
 <script>
@@ -323,31 +343,36 @@
 
   function renderSingle(data) {
     const pct   = Math.round(data.confidence * 100);
-    const label = data.sentiment.toUpperCase();
-
     const badge = document.getElementById('sentiment-label');
-    badge.textContent = label;
+    badge.textContent = data.sentiment.toUpperCase();
     badge.className   = `sentiment-badge ${data.sentiment}`;
-
     document.getElementById('conf-pct').textContent = pct + '%';
     document.getElementById('conf-bar').style.width = pct + '%';
     document.getElementById('model-tag').textContent = 'Model used: ' + data.model_used;
-
     resultCard.style.display = 'block';
   }
 
   function renderCompareCol(prefix, res) {
+    const badge    = document.getElementById(prefix + '-sentiment');
+    const confPct  = document.getElementById(prefix + '-conf-pct');
+    const confBar  = document.getElementById(prefix + '-conf-bar');
+    const noteEl   = document.getElementById(prefix + '-note');
+
     if (res.error) {
-      document.getElementById(prefix + '-sentiment').textContent = 'N/A';
-      document.getElementById(prefix + '-conf-pct').textContent  = '';
+      badge.textContent = res.error.includes('not configured') ? 'Not configured' : 'Unavailable';
+      badge.className   = 'sentiment-badge na';
+      confPct.textContent = '';
+      confBar.style.width = '0%';
+      if (noteEl) noteEl.textContent = 'Requires AWS credentials';
       return;
     }
-    const pct   = Math.round(res.confidence * 100);
-    const badge = document.getElementById(prefix + '-sentiment');
+
+    const pct = Math.round(res.confidence * 100);
     badge.textContent = res.sentiment.toUpperCase();
     badge.className   = `sentiment-badge ${res.sentiment}`;
-    document.getElementById(prefix + '-conf-pct').textContent   = pct + '%';
-    document.getElementById(prefix + '-conf-bar').style.width   = pct + '%';
+    confPct.textContent   = pct + '%';
+    confBar.style.width   = pct + '%';
+    if (noteEl) noteEl.textContent = '';
   }
 
   function getText() {
@@ -392,8 +417,9 @@
       const data = await res.json();
       hideSpinner();
       if (!res.ok) { showError(data.error || 'Server error'); return; }
-      renderCompareCol('lr',   data.results.logistic_regression);
-      renderCompareCol('lstm', data.results.lstm);
+      renderCompareCol('lr',      data.results.logistic_regression);
+      renderCompareCol('lstm',    data.results.lstm);
+      renderCompareCol('bedrock', data.results.bedrock);
       cmpCard.style.display = 'block';
     } catch (e) {
       hideSpinner();

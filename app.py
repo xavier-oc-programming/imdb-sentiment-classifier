@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import pickle
 from pathlib import Path
 
@@ -9,6 +10,10 @@ from flask import Flask, request, jsonify, render_template
 app = Flask(__name__)
 
 MODEL_DIR = Path('models')
+
+BEDROCK_MODEL_ID = 'anthropic.claude-haiku-4-5'
+BEDROCK_REGION   = 'eu-west-1'
+
 
 # ── Text cleaning (mirrors train.py) ─────────────────────────────────────────
 def clean_text(text: str) -> str:
@@ -23,7 +28,6 @@ def clean_text(text: str) -> str:
 _models = {}
 
 def load_models():
-    """Load whichever models are present; raise if nothing is available."""
     global _models
     if _models:
         return _models
@@ -35,7 +39,6 @@ def load_models():
     best = best_model_path.read_text().strip()
     _models['best'] = best
 
-    # Always load LR so /compare works
     lr_path  = MODEL_DIR / 'logistic_regression.pkl'
     vec_path = MODEL_DIR / 'tfidf_vectorizer.pkl'
     if lr_path.exists() and vec_path.exists():
@@ -44,7 +47,6 @@ def load_models():
         with open(lr_path, 'rb') as f:
             _models['logistic_regression'] = pickle.load(f)
 
-    # Load LSTM if present
     lstm_path  = MODEL_DIR / 'lstm_model.keras'
     vocab_path = MODEL_DIR / 'lstm_vocab.pkl'
     if lstm_path.exists() and vocab_path.exists():
@@ -56,7 +58,6 @@ def load_models():
         with open(vocab_path, 'rb') as f:
             vocab = pickle.load(f)
 
-        # Rebuild the vectorization layer with the saved vocabulary
         vectorize_layer = TextVectorization(
             max_tokens=len(vocab),
             output_mode='int',
@@ -70,10 +71,10 @@ def load_models():
 
 # ── Prediction helpers ────────────────────────────────────────────────────────
 def predict_lr(text: str, models: dict) -> dict:
-    cleaned  = clean_text(text)
-    X        = models['tfidf_vectorizer'].transform([cleaned])
-    prob     = models['logistic_regression'].predict_proba(X)[0]
-    label    = int(models['logistic_regression'].predict(X)[0])
+    cleaned    = clean_text(text)
+    X          = models['tfidf_vectorizer'].transform([cleaned])
+    prob       = models['logistic_regression'].predict_proba(X)[0]
+    label      = int(models['logistic_regression'].predict(X)[0])
     confidence = float(prob[label])
     return {
         'sentiment':  'positive' if label == 1 else 'negative',
@@ -82,16 +83,59 @@ def predict_lr(text: str, models: dict) -> dict:
 
 
 def predict_lstm(text: str, models: dict) -> dict:
-    cleaned   = clean_text(text)
-    vec       = models['lstm_vectorizer']
-    X         = vec(np.array([cleaned])).numpy()
-    prob      = float(models['lstm'].predict(X, verbose=0)[0][0])
-    label     = 1 if prob >= 0.5 else 0
+    cleaned    = clean_text(text)
+    vec        = models['lstm_vectorizer']
+    X          = vec(np.array([cleaned])).numpy()
+    prob       = float(models['lstm'].predict(X, verbose=0)[0][0])
+    label      = 1 if prob >= 0.5 else 0
     confidence = prob if label == 1 else 1 - prob
     return {
         'sentiment':  'positive' if label == 1 else 'negative',
         'confidence': round(confidence, 4)
     }
+
+
+def predict_bedrock(text: str) -> dict:
+    """Call Claude on Amazon Bedrock. Returns an error dict if credentials are not configured."""
+    try:
+        import boto3
+        from botocore.exceptions import NoCredentialsError, ClientError
+
+        client = boto3.client('bedrock-runtime', region_name=BEDROCK_REGION)
+
+        prompt = (
+            "Classify the sentiment of this movie review as exactly \"positive\" or \"negative\". "
+            "Also provide a confidence score between 0.0 and 1.0 reflecting how certain you are. "
+            "Respond with only valid JSON in this exact format, no other text: "
+            "{\"sentiment\": \"positive\", \"confidence\": 0.95}\n\n"
+            f"Review: {text}"
+        )
+
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 64,
+            "messages": [{"role": "user", "content": prompt}]
+        })
+
+        response = client.invoke_model(modelId=BEDROCK_MODEL_ID, body=body)
+        response_body = json.loads(response['body'].read())
+        raw = response_body['content'][0]['text'].strip()
+        result = json.loads(raw)
+
+        return {
+            'sentiment':  result['sentiment'],
+            'confidence': round(float(result['confidence']), 4)
+        }
+
+    except ImportError:
+        return {'error': 'boto3 not installed — pip install boto3'}
+    except Exception as e:
+        err = str(e)
+        if 'NoCredentialsError' in err or 'credentials' in err.lower():
+            return {'error': 'Bedrock not configured — set AWS credentials to enable'}
+        if 'Could not connect' in err or 'EndpointResolutionError' in err:
+            return {'error': 'Bedrock not configured — set AWS credentials to enable'}
+        return {'error': f'Bedrock unavailable: {err}'}
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -127,12 +171,12 @@ def analyze():
     if best == 'logistic_regression':
         if 'logistic_regression' not in models:
             return jsonify({'error': 'Logistic regression model files not found'}), 503
-        result = predict_lr(text, models)
+        result      = predict_lr(text, models)
         model_label = 'TF-IDF + Logistic Regression'
     else:
         if 'lstm' not in models:
             return jsonify({'error': 'LSTM model files not found'}), 503
-        result = predict_lstm(text, models)
+        result      = predict_lstm(text, models)
         model_label = 'Keras LSTM'
 
     return jsonify({
@@ -140,6 +184,31 @@ def analyze():
         'sentiment':  result['sentiment'],
         'confidence': result['confidence'],
         'model_used': model_label
+    })
+
+
+@app.route('/analyze-bedrock', methods=['POST'])
+def analyze_bedrock():
+    data = request.get_json(silent=True)
+    if not data or 'text' not in data:
+        return jsonify({'error': 'Request body must be JSON with a "text" field'}), 400
+
+    text = data['text']
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({'error': '"text" must be a non-empty string'}), 400
+    if len(text) > 5000:
+        return jsonify({'error': '"text" must be 5,000 characters or fewer'}), 400
+
+    result = predict_bedrock(text)
+
+    if 'error' in result:
+        return jsonify({'error': result['error']}), 503
+
+    return jsonify({
+        'text':       text,
+        'sentiment':  result['sentiment'],
+        'confidence': result['confidence'],
+        'model_used': f'Claude Haiku (Amazon Bedrock)'
     })
 
 
@@ -171,6 +240,8 @@ def compare():
         results['lstm'] = predict_lstm(text, models)
     else:
         results['lstm'] = {'error': 'Model not available'}
+
+    results['bedrock'] = predict_bedrock(text)
 
     return jsonify({'text': text, 'results': results})
 
