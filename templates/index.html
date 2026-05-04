@@ -119,16 +119,46 @@
     .btn-secondary         { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
     .btn-secondary:hover   { background: #e6eef8; }
 
-    .spinner {
+    .loading-overlay {
       display: none;
-      width: 22px; height: 22px;
+      text-align: center;
+      padding: 1.4rem 1rem;
+    }
+    .spinner {
+      width: 28px; height: 28px;
       border: 3px solid #ccc;
       border-top-color: var(--blue);
       border-radius: 50%;
       animation: spin .6s linear infinite;
-      margin: 1.2rem auto 0;
+      margin: 0 auto .9rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-msg {
+      font-size: .92rem;
+      color: var(--muted);
+      font-style: italic;
+      min-height: 1.4rem;
+      transition: opacity .3s;
+    }
+    .loading-bar-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: .7rem;
+    }
+    .loading-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--blue);
+      width: 0%;
+      animation: loadpulse 2.5s ease-in-out infinite;
+    }
+    @keyframes loadpulse {
+      0%   { width: 5%; }
+      50%  { width: 75%; }
+      100% { width: 5%; }
+    }
 
     #result { display: none; }
 
@@ -227,7 +257,11 @@
       <button class="btn-secondary" id="btn-compare">Compare Both Models</button>
     </div>
 
-    <div class="spinner" id="spinner"></div>
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-msg" id="loading-msg">Consulting the model…</div>
+      <div class="loading-bar-track"><div class="loading-bar-fill"></div></div>
+    </div>
     <p class="error-msg" id="error-msg"></p>
   </div>
 
@@ -270,10 +304,38 @@
   const textarea   = document.getElementById('review-text');
   const charCount  = document.getElementById('char-count');
   const charCtr    = document.querySelector('.char-counter');
-  const spinner    = document.getElementById('spinner');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingMsg = document.getElementById('loading-msg');
   const errorMsg   = document.getElementById('error-msg');
   const resultCard = document.getElementById('result');
   const cmpCard    = document.getElementById('compare-result');
+
+  const LOADING_MESSAGES = [
+    "Waking up the model… it was napping 😴",
+    "Bribing the neural network with GPUs…",
+    "Teaching the AI to feel emotions…",
+    "Counting tokens, one existential crisis at a time…",
+    "Running 8,412 matrix multiplications…",
+    "Asking logistic regression nicely…",
+    "The model is on a coffee break, back soon…",
+    "Converting opinions into floating point numbers…",
+    "Deploying sarcasm detector… just kidding…",
+    "Cold start. Lambda is stretching. Give it a sec."
+  ];
+  let msgInterval = null;
+
+  function startLoadingMessages() {
+    let i = Math.floor(Math.random() * LOADING_MESSAGES.length);
+    loadingMsg.textContent = LOADING_MESSAGES[i];
+    msgInterval = setInterval(() => {
+      i = (i + 1) % LOADING_MESSAGES.length;
+      loadingMsg.textContent = LOADING_MESSAGES[i];
+    }, 2500);
+  }
+  function stopLoadingMessages() {
+    clearInterval(msgInterval);
+    msgInterval = null;
+  }
 
   textarea.addEventListener('input', () => {
     const n = textarea.value.length;
@@ -290,12 +352,16 @@
   });
 
   function showSpinner() {
-    spinner.style.display = 'block';
+    loadingOverlay.style.display = 'block';
     errorMsg.style.display = 'none';
     resultCard.style.display = 'none';
     cmpCard.style.display = 'none';
+    startLoadingMessages();
   }
-  function hideSpinner() { spinner.style.display = 'none'; }
+  function hideSpinner() {
+    loadingOverlay.style.display = 'none';
+    stopLoadingMessages();
+  }
 
   function showError(msg) {
     errorMsg.textContent = msg;

@@ -16,8 +16,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix
+    confusion_matrix, roc_curve, auc
 )
+from sklearn.model_selection import learning_curve
 from tensorflow.keras.layers import (
     TextVectorization, Embedding, LSTM, Dense
 )
@@ -97,6 +98,7 @@ def train_logistic_regression(train_texts, train_labels, test_texts, test_labels
     training_time = time.time() - t0
 
     y_pred = clf.predict(X_test)
+    lr_prob = clf.predict_proba(X_test)[:, 1]
 
     metrics = {
         'accuracy':      accuracy_score(test_labels, y_pred),
@@ -121,7 +123,7 @@ def train_logistic_regression(train_texts, train_labels, test_texts, test_labels
     print("  Saved → models/tfidf_vectorizer.pkl")
     print("  Saved → models/logistic_regression.pkl")
 
-    return clf, vectorizer, metrics, y_pred
+    return clf, vectorizer, metrics, y_pred, lr_prob
 
 
 # ── Model 2 — Keras LSTM ─────────────────────────────────────────────────────
@@ -172,8 +174,8 @@ def train_lstm(train_texts, train_labels, test_texts, test_labels):
     training_time = time.time() - t0
 
     # Evaluate
-    y_prob = model.predict(X_test, verbose=0).flatten()
-    y_pred = (y_prob >= 0.5).astype(int)
+    lstm_prob = model.predict(X_test, verbose=0).flatten()
+    y_pred    = (lstm_prob >= 0.5).astype(int)
 
     metrics = {
         'accuracy':      accuracy_score(y_test, y_pred),
@@ -198,7 +200,7 @@ def train_lstm(train_texts, train_labels, test_texts, test_labels):
         pickle.dump(vocab, f)
     print("  Saved → models/lstm_vocab.pkl")
 
-    return model, vectorize_layer, metrics, y_pred, history
+    return model, vectorize_layer, metrics, y_pred, lstm_prob, history
 
 
 # ── Charts ───────────────────────────────────────────────────────────────────
@@ -320,15 +322,104 @@ def plot_top_words(clf, vectorizer):
     print("  Saved → plots/04_top_words.png")
 
 
+def plot_lr_learning_curve(train_texts, train_labels, vectorizer):
+    """F1 vs training set size for Logistic Regression (3-fold CV)."""
+    print("  Computing LR learning curve — this takes a few minutes …")
+    X = vectorizer.transform(train_texts)
+    train_sizes, train_scores, val_scores = learning_curve(
+        LogisticRegression(max_iter=1000, C=1.0),
+        X, train_labels,
+        train_sizes=np.linspace(0.1, 1.0, 8),
+        cv=3,
+        scoring='f1',
+        n_jobs=-1
+    )
+    train_mean = train_scores.mean(axis=1)
+    train_std  = train_scores.std(axis=1)
+    val_mean   = val_scores.mean(axis=1)
+    val_std    = val_scores.std(axis=1)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(train_sizes, train_mean, label='Training F1',   color='#2E75B6', marker='o')
+    ax.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.15, color='#2E75B6')
+    ax.plot(train_sizes, val_mean,   label='Validation F1', color='#ED7D31', marker='o', linestyle='--')
+    ax.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.15, color='#ED7D31')
+    ax.set_title('TF-IDF + LR — Learning Curve (F1 vs Training Set Size)')
+    ax.set_xlabel('Training samples')
+    ax.set_ylabel('F1 Score')
+    ax.legend()
+    ax.grid(linestyle='--', alpha=0.4)
+    fig.tight_layout()
+    fig.savefig(PLOTS_DIR / '05_lr_learning_curve.png', dpi=150)
+    plt.close(fig)
+    print("  Saved → plots/05_lr_learning_curve.png")
+
+
+def plot_roc_curves(test_labels, lr_prob, lstm_prob):
+    """ROC curves with AUC for both models."""
+    fpr_lr,   tpr_lr,   _ = roc_curve(test_labels, lr_prob)
+    fpr_lstm, tpr_lstm, _ = roc_curve(test_labels, lstm_prob)
+    auc_lr   = auc(fpr_lr,   tpr_lr)
+    auc_lstm = auc(fpr_lstm, tpr_lstm)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.plot(fpr_lr,   tpr_lr,   label=f'TF-IDF + LR  (AUC = {auc_lr:.4f})',  color='#2E75B6', lw=2)
+    ax.plot(fpr_lstm, tpr_lstm, label=f'Keras LSTM   (AUC = {auc_lstm:.4f})', color='#ED7D31', lw=2, linestyle='--')
+    ax.plot([0, 1], [0, 1], color='grey', linestyle=':', lw=1, label='Random baseline')
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_title('ROC Curves — TF-IDF + LR vs Keras LSTM')
+    ax.legend()
+    ax.grid(linestyle='--', alpha=0.4)
+    fig.tight_layout()
+    fig.savefig(PLOTS_DIR / '06_roc_curves.png', dpi=150)
+    plt.close(fig)
+    print("  Saved → plots/06_roc_curves.png")
+
+
+def plot_confidence_distribution(test_labels, lr_prob, lstm_prob, lr_pred, lstm_pred):
+    """Histogram of prediction confidence split by correct vs incorrect."""
+    test_labels  = np.array(test_labels)
+    lr_conf      = np.where(lr_prob   >= 0.5, lr_prob,   1 - lr_prob)
+    lstm_conf    = np.where(lstm_prob >= 0.5, lstm_prob, 1 - lstm_prob)
+    lr_correct   = lr_pred   == test_labels
+    lstm_correct = lstm_pred == test_labels
+
+    bins = np.linspace(0.5, 1.0, 25)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+    ax1.hist(lr_conf[lr_correct],   bins=bins, alpha=0.7, color='#70AD47', label='Correct')
+    ax1.hist(lr_conf[~lr_correct],  bins=bins, alpha=0.7, color='#e53935', label='Incorrect')
+    ax1.set_title('TF-IDF + LR — Prediction Confidence')
+    ax1.set_xlabel('Confidence')
+    ax1.set_ylabel('Count')
+    ax1.legend()
+    ax1.grid(linestyle='--', alpha=0.4)
+
+    ax2.hist(lstm_conf[lstm_correct],  bins=bins, alpha=0.7, color='#70AD47', label='Correct')
+    ax2.hist(lstm_conf[~lstm_correct], bins=bins, alpha=0.7, color='#e53935', label='Incorrect')
+    ax2.set_title('Keras LSTM — Prediction Confidence')
+    ax2.set_xlabel('Confidence')
+    ax2.set_ylabel('Count')
+    ax2.legend()
+    ax2.grid(linestyle='--', alpha=0.4)
+
+    fig.suptitle('Confidence Distribution: Correct vs Incorrect Predictions', fontweight='bold')
+    fig.tight_layout()
+    fig.savefig(PLOTS_DIR / '07_confidence_distribution.png', dpi=150)
+    plt.close(fig)
+    print("  Saved → plots/07_confidence_distribution.png")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
     train_texts, train_labels, test_texts, test_labels = load_data()
 
-    clf, vectorizer, lr_metrics, lr_pred = train_logistic_regression(
+    clf, vectorizer, lr_metrics, lr_pred, lr_prob = train_logistic_regression(
         train_texts, train_labels, test_texts, test_labels
     )
 
-    model, vectorize_layer, lstm_metrics, lstm_pred, history = train_lstm(
+    model, vectorize_layer, lstm_metrics, lstm_pred, lstm_prob, history = train_lstm(
         train_texts, train_labels, test_texts, test_labels
     )
 
@@ -374,6 +465,9 @@ def main():
     plot_lstm_training_curves(history)
     plot_confusion_matrices(test_labels, lr_pred, lstm_pred)
     plot_top_words(clf, vectorizer)
+    plot_lr_learning_curve(train_texts, train_labels, vectorizer)
+    plot_roc_curves(test_labels, lr_prob, lstm_prob)
+    plot_confidence_distribution(test_labels, lr_prob, lstm_prob, lr_pred, lstm_pred)
 
     # ── Final summary ─────────────────────────────────────────────────────────
     print("\n" + "="*70)

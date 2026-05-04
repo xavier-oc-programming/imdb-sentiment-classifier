@@ -11,6 +11,7 @@ app = Flask(__name__)
 MODEL_DIR = Path('models')
 
 
+
 # ── Text cleaning (mirrors train.py) ─────────────────────────────────────────
 def clean_text(text: str) -> str:
     text = text.lower()
@@ -46,21 +47,24 @@ def load_models():
     lstm_path  = MODEL_DIR / 'lstm_model.keras'
     vocab_path = MODEL_DIR / 'lstm_vocab.pkl'
     if lstm_path.exists() and vocab_path.exists():
-        import tensorflow as tf
-        from tensorflow.keras.layers import TextVectorization
+        try:
+            import tensorflow as tf
+            from tensorflow.keras.layers import TextVectorization
 
-        _models['lstm'] = tf.keras.models.load_model(str(lstm_path))
+            _models['lstm'] = tf.keras.models.load_model(str(lstm_path))
 
-        with open(vocab_path, 'rb') as f:
-            vocab = pickle.load(f)
+            with open(vocab_path, 'rb') as f:
+                vocab = pickle.load(f)
 
-        vectorize_layer = TextVectorization(
-            max_tokens=len(vocab),
-            output_mode='int',
-            output_sequence_length=256
-        )
-        vectorize_layer.set_vocabulary(vocab)
-        _models['lstm_vectorizer'] = vectorize_layer
+            vectorize_layer = TextVectorization(
+                max_tokens=len(vocab),
+                output_mode='int',
+                output_sequence_length=256
+            )
+            vectorize_layer.set_vocabulary(vocab)
+            _models['lstm_vectorizer'] = vectorize_layer
+        except ImportError:
+            pass  # TensorFlow not available in this environment (e.g. Lambda)
 
     return _models
 
@@ -92,6 +96,11 @@ def predict_lstm(text: str, models: dict) -> dict:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+@app.route('/health')
+def health():
+    return {'status': 'ok'}, 200
+
+
 @app.route('/')
 def index():
     try:
@@ -174,4 +183,5 @@ def compare():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
