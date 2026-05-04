@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import pickle
 from pathlib import Path
 
@@ -10,9 +9,6 @@ from flask import Flask, request, jsonify, render_template
 app = Flask(__name__)
 
 MODEL_DIR = Path('models')
-
-BEDROCK_MODEL_ID = 'anthropic.claude-haiku-4-5'
-BEDROCK_REGION   = 'eu-west-1'
 
 
 # ── Text cleaning (mirrors train.py) ─────────────────────────────────────────
@@ -95,49 +91,6 @@ def predict_lstm(text: str, models: dict) -> dict:
     }
 
 
-def predict_bedrock(text: str) -> dict:
-    """Call Claude on Amazon Bedrock. Returns an error dict if credentials are not configured."""
-    try:
-        import boto3
-        from botocore.exceptions import NoCredentialsError, ClientError
-
-        client = boto3.client('bedrock-runtime', region_name=BEDROCK_REGION)
-
-        prompt = (
-            "Classify the sentiment of this movie review as exactly \"positive\" or \"negative\". "
-            "Also provide a confidence score between 0.0 and 1.0 reflecting how certain you are. "
-            "Respond with only valid JSON in this exact format, no other text: "
-            "{\"sentiment\": \"positive\", \"confidence\": 0.95}\n\n"
-            f"Review: {text}"
-        )
-
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 64,
-            "messages": [{"role": "user", "content": prompt}]
-        })
-
-        response = client.invoke_model(modelId=BEDROCK_MODEL_ID, body=body)
-        response_body = json.loads(response['body'].read())
-        raw = response_body['content'][0]['text'].strip()
-        result = json.loads(raw)
-
-        return {
-            'sentiment':  result['sentiment'],
-            'confidence': round(float(result['confidence']), 4)
-        }
-
-    except ImportError:
-        return {'error': 'boto3 not installed — pip install boto3'}
-    except Exception as e:
-        err = str(e)
-        if 'NoCredentialsError' in err or 'credentials' in err.lower():
-            return {'error': 'Bedrock not configured — set AWS credentials to enable'}
-        if 'Could not connect' in err or 'EndpointResolutionError' in err:
-            return {'error': 'Bedrock not configured — set AWS credentials to enable'}
-        return {'error': f'Bedrock unavailable: {err}'}
-
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
@@ -187,31 +140,6 @@ def analyze():
     })
 
 
-@app.route('/analyze-bedrock', methods=['POST'])
-def analyze_bedrock():
-    data = request.get_json(silent=True)
-    if not data or 'text' not in data:
-        return jsonify({'error': 'Request body must be JSON with a "text" field'}), 400
-
-    text = data['text']
-    if not isinstance(text, str) or not text.strip():
-        return jsonify({'error': '"text" must be a non-empty string'}), 400
-    if len(text) > 5000:
-        return jsonify({'error': '"text" must be 5,000 characters or fewer'}), 400
-
-    result = predict_bedrock(text)
-
-    if 'error' in result:
-        return jsonify({'error': result['error']}), 503
-
-    return jsonify({
-        'text':       text,
-        'sentiment':  result['sentiment'],
-        'confidence': result['confidence'],
-        'model_used': f'Claude Haiku (Amazon Bedrock)'
-    })
-
-
 @app.route('/compare', methods=['POST'])
 def compare():
     data = request.get_json(silent=True)
@@ -240,8 +168,6 @@ def compare():
         results['lstm'] = predict_lstm(text, models)
     else:
         results['lstm'] = {'error': 'Model not available'}
-
-    results['bedrock'] = predict_bedrock(text)
 
     return jsonify({'text': text, 'results': results})
 

@@ -8,7 +8,7 @@
 ![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-FF9900?logo=amazonaws&logoColor=white)
 ![Zappa](https://img.shields.io/badge/Zappa-serverless-232F3E)
 
-A production sentiment analysis pipeline that benchmarks three approaches on 50,000 IMDb reviews: classical NLP (TF-IDF + Logistic Regression), deep learning (Keras LSTM), and zero-shot inference via a Foundation Model (Claude Haiku on Amazon Bedrock). All three are served from a single Flask API deployed serverlessly on AWS Lambda.
+A production sentiment analysis pipeline that trains and benchmarks two approaches on 50,000 IMDb reviews — classical NLP (TF-IDF + Logistic Regression) and deep learning (Keras LSTM) — then deploys the winning model as a serverless REST API on AWS Lambda. The notebook also documents a researched Amazon Bedrock integration for zero-shot inference with a Foundation Model as a third benchmark dimension.
 
 **Live demo → [AWS Lambda endpoint](https://your-endpoint.execute-api.eu-west-1.amazonaws.com)**
 &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -217,36 +217,9 @@ Classifies a review using the best-performing model.
 
 ---
 
-### `POST /analyze-bedrock`
-
-Classifies a review using Claude Haiku via Amazon Bedrock. Returns 503 with a clear message if AWS credentials are not configured — no silent failures.
-
-**Request:**
-
-```json
-{"text": "The movie was absolutely brilliant"}
-```
-
-**Response:**
-
-```json
-{
-  "text": "The movie was absolutely brilliant",
-  "sentiment": "positive",
-  "confidence": 0.97,
-  "model_used": "Claude Haiku (Amazon Bedrock)"
-}
-```
-
-| Status | Condition |
-|--------|-----------|
-| 503 | AWS credentials not configured |
-
----
-
 ### `POST /compare`
 
-Runs the review through all three models simultaneously — TF-IDF + LR, Keras LSTM, and Claude Haiku via Bedrock. Bedrock result degrades gracefully to `"not configured"` if credentials are absent.
+Runs the review through both models simultaneously and returns results side by side. Powers the "Compare Both Models" button in the frontend.
 
 **Request:**
 
@@ -261,8 +234,7 @@ Runs the review through all three models simultaneously — TF-IDF + LR, Keras L
   "text": "The movie was absolutely brilliant",
   "results": {
     "logistic_regression": {"sentiment": "positive", "confidence": 0.91},
-    "lstm":                {"sentiment": "positive", "confidence": 0.94},
-    "bedrock":             {"sentiment": "positive", "confidence": 0.97}
+    "lstm":                {"sentiment": "positive", "confidence": 0.94}
   }
 }
 ```
@@ -302,7 +274,7 @@ The `zappa_settings.json` excludes large training artefacts (the notebook, raw d
 
 When it came to deployment, I researched serverless options for a Flask ML API. Traditional deployment on Railway works for web apps but ML models introduce size constraints — TensorFlow alone exceeds Railway's free tier memory. I researched AWS Lambda as an alternative: serverless, scales to zero when idle, and the free tier covers 1 million requests per month. Zappa was identified as the optimal deployment tool — it packages a Flask app and its dependencies into a Lambda-compatible zip, creates the API Gateway automatically, and deploys with a single command. I familiarised myself with Zappa through the official documentation at zappa.readthedocs.io and YouTube tutorials before implementing.
 
-I chose to benchmark three modelling approaches rather than committing to one upfront. TF-IDF with Logistic Regression is the classical NLP baseline — fast, interpretable, and often surprisingly competitive. The Keras LSTM represents the deep learning approach — slower to train but better at capturing word order and context. Claude Haiku via Amazon Bedrock adds a third dimension: zero-shot inference with a Foundation Model, with no training required. Comparing all three and selecting the best-performing local model based on F1 score demonstrates understanding of the tradeoffs between classical NLP, deep learning, and Foundation Model approaches — the central question in production MLOps today.
+I chose to compare two modelling approaches rather than committing to one upfront. TF-IDF with Logistic Regression is the classical NLP baseline — fast, interpretable, and often surprisingly competitive. The Keras LSTM represents the deep learning approach — slower to train but better at capturing word order and context. Comparing both and selecting the winner based on F1 score demonstrates understanding of the tradeoffs between classical and deep learning NLP methods. The notebook additionally documents a researched Amazon Bedrock integration as a third benchmark dimension, exploring when a Foundation Model is preferable to a trained model.
 
 ---
 

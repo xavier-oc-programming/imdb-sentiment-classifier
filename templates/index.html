@@ -16,7 +16,6 @@
       --border:  #dde3ed;
       --text:    #1a1a2e;
       --muted:   #6b7280;
-      --orange:  #ED7D31;
     }
 
     body {
@@ -26,7 +25,6 @@
       min-height: 100vh;
     }
 
-    /* ── Header ── */
     header {
       background: var(--blue);
       color: #fff;
@@ -36,14 +34,12 @@
     header h1 { font-size: 1.8rem; font-weight: 700; }
     header p  { margin-top: .4rem; opacity: .85; font-size: .95rem; }
 
-    /* ── Layout ── */
     .container {
-      max-width: 900px;
+      max-width: 780px;
       margin: 2rem auto;
       padding: 0 1rem;
     }
 
-    /* ── Card ── */
     .card {
       background: #fff;
       border: 1px solid var(--border);
@@ -59,7 +55,6 @@
       color: var(--blue);
     }
 
-    /* ── Textarea ── */
     textarea {
       width: 100%;
       min-height: 130px;
@@ -74,7 +69,6 @@
     }
     textarea:focus { outline: none; border-color: var(--blue); }
 
-    /* ── Char counter ── */
     .char-counter {
       text-align: right;
       font-size: .78rem;
@@ -83,7 +77,6 @@
     }
     .char-counter.over { color: var(--red); }
 
-    /* ── Example chips ── */
     .chips {
       display: flex;
       flex-wrap: wrap;
@@ -101,11 +94,10 @@
       transition: background .15s, border-color .15s;
     }
     .chip:hover { background: #e2eaf5; border-color: var(--blue); }
-    .chip.positive  { border-color: var(--green);  color: #2e7d32; }
-    .chip.negative  { border-color: var(--red);    color: var(--red); }
-    .chip.ambiguous { border-color: #f59e0b;       color: #b45309; }
+    .chip.positive  { border-color: var(--green); color: #2e7d32; }
+    .chip.negative  { border-color: var(--red);   color: var(--red); }
+    .chip.ambiguous { border-color: #f59e0b;      color: #b45309; }
 
-    /* ── Buttons ── */
     .btn-row {
       display: flex;
       gap: .75rem;
@@ -122,14 +114,11 @@
       transition: background .15s, transform .1s;
     }
     button:active { transform: scale(.97); }
-    .btn-primary   { background: var(--blue);    color: #fff; }
-    .btn-primary:hover   { background: var(--blue-dk); }
-    .btn-secondary { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
-    .btn-secondary:hover { background: #e6eef8; }
-    .btn-bedrock   { background: var(--orange); color: #fff; }
-    .btn-bedrock:hover   { background: #c4621f; }
+    .btn-primary           { background: var(--blue); color: #fff; }
+    .btn-primary:hover     { background: var(--blue-dk); }
+    .btn-secondary         { background: #fff; color: var(--blue); border: 1.5px solid var(--blue); }
+    .btn-secondary:hover   { background: #e6eef8; }
 
-    /* ── Spinner ── */
     .spinner {
       display: none;
       width: 22px; height: 22px;
@@ -141,7 +130,6 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Result card ── */
     #result { display: none; }
 
     .sentiment-badge {
@@ -155,9 +143,7 @@
     }
     .sentiment-badge.positive { color: var(--green); background: #f0faf0; }
     .sentiment-badge.negative { color: var(--red);   background: #fff0f0; }
-    .sentiment-badge.na       { color: var(--muted); background: var(--grey); font-size: 1rem; padding: .9rem; }
 
-    /* ── Confidence bar ── */
     .conf-label {
       display: flex;
       justify-content: space-between;
@@ -184,32 +170,21 @@
       text-align: center;
     }
 
-    /* ── Compare results ── */
     #compare-result { display: none; }
     .compare-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 1rem;
     }
-    @media (max-width: 680px) { .compare-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .compare-grid { grid-template-columns: 1fr; } }
     .compare-col {
       border: 1.5px solid var(--border);
       border-radius: 8px;
       padding: 1rem;
       text-align: center;
     }
-    .compare-col.bedrock-col { border-color: var(--orange); }
     .compare-col h3 { font-size: .85rem; color: var(--muted); margin-bottom: .6rem; }
-    .compare-col.bedrock-col h3 { color: var(--orange); }
 
-    .bedrock-note {
-      font-size: .78rem;
-      color: var(--muted);
-      margin-top: .6rem;
-      font-style: italic;
-    }
-
-    /* ── Error ── */
     .error-msg {
       color: var(--red);
       font-size: .9rem;
@@ -217,7 +192,6 @@
       display: none;
     }
 
-    /* ── Footer ── */
     footer {
       text-align: center;
       padding: 2rem 1rem;
@@ -230,12 +204,11 @@
 
 <header>
   <h1>IMDb Sentiment Analysis</h1>
-  <p>TF-IDF + Logistic Regression &nbsp;·&nbsp; Keras LSTM &nbsp;·&nbsp; Claude Haiku via Amazon Bedrock &nbsp;·&nbsp; 50,000 IMDb reviews</p>
+  <p>TF-IDF + Logistic Regression vs Keras LSTM &nbsp;·&nbsp; 50,000 IMDb reviews</p>
 </header>
 
 <div class="container">
 
-  <!-- Input card -->
   <div class="card">
     <h2>Enter a Movie Review</h2>
 
@@ -251,14 +224,13 @@
 
     <div class="btn-row">
       <button class="btn-primary"   id="btn-analyse">Analyse</button>
-      <button class="btn-secondary" id="btn-compare">Compare All Three Models</button>
+      <button class="btn-secondary" id="btn-compare">Compare Both Models</button>
     </div>
 
     <div class="spinner" id="spinner"></div>
     <p class="error-msg" id="error-msg"></p>
   </div>
 
-  <!-- Single-model result -->
   <div class="card" id="result">
     <h2>Result</h2>
     <div class="sentiment-badge" id="sentiment-label"></div>
@@ -270,7 +242,6 @@
     <p class="model-tag" id="model-tag"></p>
   </div>
 
-  <!-- Compare result -->
   <div class="card" id="compare-result">
     <h2>Model Comparison</h2>
     <div class="compare-grid">
@@ -285,13 +256,6 @@
         <div class="sentiment-badge" id="lstm-sentiment"></div>
         <div class="conf-label"><span>Confidence</span><span id="lstm-conf-pct"></span></div>
         <div class="bar-track"><div class="bar-fill" id="lstm-conf-bar" style="width:0%"></div></div>
-      </div>
-      <div class="compare-col bedrock-col" id="bedrock-col">
-        <h3>Claude Haiku · Amazon Bedrock</h3>
-        <div class="sentiment-badge" id="bedrock-sentiment"></div>
-        <div class="conf-label"><span>Confidence</span><span id="bedrock-conf-pct"></span></div>
-        <div class="bar-track"><div class="bar-fill" id="bedrock-conf-bar" style="width:0%"></div></div>
-        <p class="bedrock-note" id="bedrock-note"></p>
       </div>
     </div>
   </div>
@@ -311,14 +275,12 @@
   const resultCard = document.getElementById('result');
   const cmpCard    = document.getElementById('compare-result');
 
-  // ── Char counter ──────────────────────────────────────────────────────────
   textarea.addEventListener('input', () => {
     const n = textarea.value.length;
     charCount.textContent = n;
     charCtr.classList.toggle('over', n >= 5000);
   });
 
-  // ── Example chips ─────────────────────────────────────────────────────────
   document.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
       textarea.value = chip.dataset.review;
@@ -327,7 +289,6 @@
     });
   });
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
   function showSpinner() {
     spinner.style.display = 'block';
     errorMsg.style.display = 'none';
@@ -353,26 +314,21 @@
   }
 
   function renderCompareCol(prefix, res) {
-    const badge    = document.getElementById(prefix + '-sentiment');
-    const confPct  = document.getElementById(prefix + '-conf-pct');
-    const confBar  = document.getElementById(prefix + '-conf-bar');
-    const noteEl   = document.getElementById(prefix + '-note');
-
+    const badge   = document.getElementById(prefix + '-sentiment');
+    const confPct = document.getElementById(prefix + '-conf-pct');
+    const confBar = document.getElementById(prefix + '-conf-bar');
     if (res.error) {
-      badge.textContent = res.error.includes('not configured') ? 'Not configured' : 'Unavailable';
-      badge.className   = 'sentiment-badge na';
+      badge.textContent = 'N/A';
+      badge.className   = 'sentiment-badge';
       confPct.textContent = '';
       confBar.style.width = '0%';
-      if (noteEl) noteEl.textContent = 'Requires AWS credentials';
       return;
     }
-
     const pct = Math.round(res.confidence * 100);
-    badge.textContent = res.sentiment.toUpperCase();
-    badge.className   = `sentiment-badge ${res.sentiment}`;
+    badge.textContent     = res.sentiment.toUpperCase();
+    badge.className       = `sentiment-badge ${res.sentiment}`;
     confPct.textContent   = pct + '%';
     confBar.style.width   = pct + '%';
-    if (noteEl) noteEl.textContent = '';
   }
 
   function getText() {
@@ -382,7 +338,6 @@
     return t;
   }
 
-  // ── Analyse button ────────────────────────────────────────────────────────
   document.getElementById('btn-analyse').addEventListener('click', async () => {
     const text = getText();
     if (!text) return;
@@ -403,7 +358,6 @@
     }
   });
 
-  // ── Compare button ────────────────────────────────────────────────────────
   document.getElementById('btn-compare').addEventListener('click', async () => {
     const text = getText();
     if (!text) return;
@@ -417,9 +371,8 @@
       const data = await res.json();
       hideSpinner();
       if (!res.ok) { showError(data.error || 'Server error'); return; }
-      renderCompareCol('lr',      data.results.logistic_regression);
-      renderCompareCol('lstm',    data.results.lstm);
-      renderCompareCol('bedrock', data.results.bedrock);
+      renderCompareCol('lr',   data.results.logistic_regression);
+      renderCompareCol('lstm', data.results.lstm);
       cmpCard.style.display = 'block';
     } catch (e) {
       hideSpinner();
