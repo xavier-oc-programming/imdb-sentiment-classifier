@@ -433,11 +433,11 @@ It natively supports TensorFlow, scikit-learn, and ONNX, and would serve both mo
 
 | Approach                | Solves size | Solves cold start | Cost         | Effort                    |
 | ----------------------- | ----------- | ----------------- | ------------ | ------------------------- |
-| ONNX Runtime            | ✅          | ✅                | Free         | Low — one conversion step |
-| TFLite                  | ✅          | ✅                | Free         | Low — one conversion step |
-| Provisioned Concurrency | N/A         | ✅                | ~$11/month   | Low                       |
-| ECS Fargate             | ✅          | ✅                | ~$7–30/month | Medium                    |
-| SageMaker               | ✅          | ✅                | ~$47/month   | High                      |
+| ONNX Runtime            | Yes         | Yes               | Free         | Low — one conversion step |
+| TFLite                  | Yes         | Yes               | Free         | Low — one conversion step |
+| Provisioned Concurrency | N/A         | Yes               | ~$11/month   | Low                       |
+| ECS Fargate             | Yes         | Yes               | ~$7–30/month | Medium                    |
+| SageMaker               | Yes         | Yes               | ~$47/month   | High                      |
 
 For this project, **ONNX Runtime** is the path that would have allowed both models to run live on Lambda at essentially no additional cost or infrastructure complexity.
 
