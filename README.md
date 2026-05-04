@@ -91,7 +91,6 @@ imdb-sentiment-classifier/
 ├── Dockerfile                 # Container image for Lambda deployment
 ├── requirements.txt           # Full dependencies (training + local serving)
 ├── requirements-lambda.txt    # Minimal dependencies for Lambda (no TensorFlow)
-├── zappa_settings.json        # Zappa config — initial deployment approach, superseded by Docker
 ├── README.md
 ├── .gitignore
 ├── templates/
